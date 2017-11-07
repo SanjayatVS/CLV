@@ -1,0 +1,127 @@
+#Let's see what the conditional purchase count is 
+
+def model_predictions(total_results_df,months, sample_percentage, parameters):
+    """
+    Using model parameters, scores customers row by row to produce conditional purchases and probability alive using one of two 
+    models - Pareto NBD and BG NBD. Produces 3 new columns, cond_purch_months, prob_alive and pred_alive
+    
+    Parameters
+    ----------
+    total_results_df : data frame
+        A data frame of with prediction and actual sales data 
+        
+    months : numeric
+        number of months to predict sales across (periods)
+        
+    sample_percentage : numeric
+        What percentage of our actual customer base (from the total_results_df) should we score
+    
+    parameters : dictionary of dictionaries containing both a model number or way to reference our model and 
+        a set of parameteres also named
+        {'mod4': {'alpha': 5.02, 'b': 0.38, 'r':1.29, 'a':0.15}
+    
+    Returns
+    -------
+    data frame
+        The original dataframe with three new columns; cond_purch_months, prob_alive and pred_alive
+    """
+    
+    
+    
+    start= time.time()
+
+    #customers = pd.read_csv("C:/Users/Sanjay.Gopinath/Desktop/Custora_Data/summary_custora_14_01_01__16_08_02_wo_1st_month.csv")
+
+    
+    customers_sample = total_results_df.sample(frac=sample_percentage)
+
+    #customers_sample.dropna(inplace=True)
+
+    cond_purch_col = "cond_purch_"+str(months)
+
+    #for key in model_params:
+    for key in mod_params:    
+            model_name = key
+            #params= model_params.get(key)
+            params = mod_params.get(key)
+            if len(params)==0:
+                customers_sample['pred_alive'] = (customers_sample.prob_alive >.5 )*1
+                total_results= total_results.append(model_results(customers_sample, model_name), ignore_index=True)
+
+            else:
+                params = mod_params.get(key)
+
+                if "b" in params.keys():
+    #b is only a parameters in the Pareto model, so we're using it to establish which model to run
+
+    #set the parameters  
+                    a = params['a']
+                    alpha = params['alpha']
+                    b= params['b']
+                    r = params['r']
+                    print(a, alpha, b, r)
+
+    #run the fitted model             
+                    customers_sample[cond_purch_col] = customers_sample.apply(lambda q: BDF_conditional_expected_number_of_purchases_up_to_time(9,a,alpha, b, r, q['frequency_cal'], q['recency_cal'], q['T_cal']), axis=1)
+                    customers_sample['prob_alive'] = customers_sample.apply(lambda q: BDF_conditional_probability_alive(a,alpha, b, r, q['frequency_cal'], q['recency_cal'], q['T_cal']), axis=1)
+                    customers_sample['pred_alive'] = (customers_sample.prob_alive >.5 )*1
+
+                else:
+    #set the parameters                  
+                    s = params['s']
+                    alpha = params['alpha']
+                    beta= params['beta']
+                    r = params['r']
+
+    #run the fitted model     
+                    customers_sample[cond_purch_col] = customers_sample.apply(lambda q:pndf_conditional_expected_number_of_purchases_up_to_time(12,s,alpha, beta, r, q['frequency_cal'], q['recency_cal'], q['T_cal']), axis=1)
+                    customers_sample['prob_alive'] = customers_sample.apply(lambda q: pndf_conditional_probability_alive(s,alpha, beta, r, q['frequency_cal'], q['recency_cal'], q['T_cal']), axis=1)
+                    customers_sample['pred_alive'] = (customers_sample.prob_alive >.5 )*1
+
+
+    #run the model scoring function and append the results to total_results 
+
+
+    end = time.time()
+
+    print((end-start)/60)
+    return(customers_sample)
+    
+    
+def Bin_Scoring(results_df, pred_spend_col, spend_col, bins):
+    """
+    Produces two columns assigning bins to both our predicted spend and our actual spend. It returns the df with the two new
+    columns and prints a percentage showing the number of matching bins. 
+    
+    Parameters
+    ----------
+    results_df : data frame
+        A data frame of with prediction and actual sales data 
+        
+    pred_spend_col : numeric
+        Column containing the predicted spend
+        
+    spend_col : numeric
+        Column containing the actual spend
+    
+    bins : list of bin values
+        For example - [-1,0,50,100,200,1000,100000]
+    
+    Returns
+    -------
+    data frame
+        The original dataframe with two new columns that show the bins for the respective columns
+    """
+    
+    #print(results_df, pred_spend_col, spend_col)
+    
+    results_df['pred_spend_bins'] = pd.cut(results_df[pred_spend_col], bins)
+    results_df['spend_bins'] = pd.cut(results_df[spend_col], bins)
+    
+    
+    
+    x = results_df.spend_bins.astype('str')
+    y = results_df.pred_spend_bins.astype('str')
+    print("Bin_Matching", + np.sum(x == y)/len(x))
+    print(list(zip(bins,bins[1:])))
+    return(results_df)
