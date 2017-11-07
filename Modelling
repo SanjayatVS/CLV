@@ -1,0 +1,347 @@
+#Let's make this function accessible without having to load in anything from lifetimes 
+
+
+##############Pareto
+
+from numpy import logadde
+    
+    def conditional_expected_number_of_purchases_up_to_time(params, t, frequency,
+                                                            recency, T):
+        """
+        Conditional expected number of purchases up to time.
+
+        Calculate the expected number of repeat purchases up to time t for a
+        randomly choose individual from the population, given they have
+        purchase history (frequency, recency, T)
+
+        Parameters
+        ----------
+        t: array_like
+            times to calculate the expectation for.
+        frequency: array_like
+            historical frequency of customer.
+        recency: array_like
+            historical recency of customer.
+        T: array_like
+            age of the customer.
+
+        Returns
+        -------
+        array_like
+
+        """
+        x, t_x = frequency, recency
+        #params = params('r', 'alpha', 's', 'beta')
+        r, alpha, s, beta = params
+
+        likelihood = -self._negative_log_likelihood(params, x, t_x, T, 0)
+        first_term = gammaln(r + x) - gammaln(r) + r * log(alpha) + s * \
+            log(beta) - (r + x) * log(alpha + T) - s * log(beta + T)
+        second_term = log(r + x) + log(beta + T) - log(alpha + T)
+        third_term = log((1 - ((beta + T) / (beta + T + t)) ** (s - 1)) /
+                         (s - 1))
+        return exp(first_term + second_term + third_term - likelihood)
+
+#######BDF
+
+#imports?
+
+def conditional_expected_number_of_purchases_up_to_time(t, a, alpha, b, r, frequency,
+                                                            recency, T):
+        """
+        Conditional expected number of purchases up to time.
+        Calculate the expected number of repeat purchases up to time t for a
+        randomly choose individual from the population, given they have
+        purchase history (frequency, recency, T)
+        Parameters
+        ----------
+        t: array_like
+            times to calculate the expectation for.
+        frequency: array_like
+            historical frequency of customer.
+        recency: array_like
+            historical recency of customer.
+        T: array_like
+            age of the customer.
+        Returns
+        -------
+        array_like
+        """
+        x = frequency
+        #r, alpha, a, b = self._unload_params('r', 'alpha', 'a', 'b')
+
+        
+        _a = r + x
+        _b = b + x
+        _c = a + b + x - 1
+        _z = t / (alpha + T + t)
+        #print(_a, _b, _c, _z)
+        ln_hyp_term = np.log(hyp2f1(_a, _b, _c, _z))
+
+        # if the value is inf, we are using a different but equivalent
+        # formula to compute the function evaluation.
+        ln_hyp_term_alt = np.log(hyp2f1(_c - _a, _c - _b, _c, _z)) + \
+            (_c - _a - _b) * np.log(1 - _z)
+        ln_hyp_term = where(np.isinf(ln_hyp_term), ln_hyp_term_alt, ln_hyp_term)
+        first_term = (a + b + x - 1) / (a - 1)
+        second_term = (1 - exp(ln_hyp_term + (r + x) *
+                               np.log((alpha + T) / (alpha + t + T))))
+
+        numerator = first_term * second_term
+        denominator = 1 + (x > 0) * (a / (b + x - 1)) * \
+            ((alpha + T) / (alpha + recency)) ** (r + x)
+
+        return numerator / denominator
+        
+def MBG_NBD_conditional_expected_number_of_purchases_up_to_time(t, a, alpha, b, r, frequency,
+                                                        recency, T):
+    """
+    Conditinal expected number of repeat purchases up to time t.
+    Calculate the expected number of repeat purchases up to time t for a
+    randomly choose individual from the population, given they have
+    purchase history (frequency, recency, T)
+    See Wagner, U. and Hoppe D. (2008).
+    Parameters
+    ----------
+    t: array_like
+        times to calculate the expectation for.
+    frequency: array_like
+        historical frequency of customer.
+    recency: array_like
+        historical recency of customer.
+    T: array_like
+        age of the customer.
+    Returns
+    -------
+    array_like
+    """
+    x = frequency
+    #r, alpha, a, b = self._unload_params('r', 'alpha', 'a', 'b')
+
+    hyp_term = hyp2f1(r + x, b + x + 1, a + b + x, t / (alpha + T + t))
+    first_term = (a + b + x) / (a - 1)
+    second_term = (1 - hyp_term *
+                   ((alpha + T) / (alpha + t + T)) ** (r + x))
+    numerator = first_term * second_term
+
+    denominator = (1 + (a / (b + x)) *
+                   ((alpha + T) / (alpha + recency)) ** (r + x))
+
+    return numerator / denominator
+
+def MBG_NBD_conditional_probability_alive(a, alpha, b, r, frequency, recency, T):
+    """
+    Conditional probability alive.
+    Compute the probability that a customer with history (frequency,
+    recency, T) is currently alive.
+    From https://www.researchgate.net/publication/247219660_Empirical_validation_and_comparison_of_models_for_customer_base_analysis
+    Appendix A, eq. (5)
+    Parameters
+    ----------
+    frequency: float
+        historical frequency of customer.
+    recency: float
+        historical recency of customer.
+    T: float
+        age of the customer.
+    ln_exp_max: int
+        to what value clip log_div equation
+    Returns
+    -------
+    float
+        value representing a probability
+    """  # noqa
+    #r, alpha, a, b = self._unload_params('r', 'alpha', 'a', 'b')
+    
+    return 1. / (1 + (a / (b + frequency)) *
+                 ((alpha + T) / (alpha + recency)) ** (r + frequency))
+                 
+ ##########GammaGamma
+    
+    
+def conditional_expected_average_profit(params, frequency=None,
+                                            monetary_value=None):
+        """
+        Conditional expectation of the average profit.
+        This method computes the conditional expectation of the average profit
+        per transaction for a group of one or more customers.
+        Parameters
+        ----------
+        frequency: array_like, optional
+            a vector containing the customers' frequencies.
+            Defaults to the whole set of frequencies used for fitting the model.
+        monetary_value: array_like, optional
+            a vector containing the customers' monetary values.
+            Defaults to the whole set of monetary values used for
+            fitting the model.
+        Returns
+        -------
+        array_like:
+            The conditional expectation of the average profit per transaction
+        """
+        if monetary_value is None:
+            monetary_value = self.data['monetary_value']
+        if frequency is None:
+            frequency = self.data['frequency']
+        
+        p, q, v = params
+        
+        #p, q, v = self._unload_params('p', 'q', 'v')
+
+        # The expected average profit is a weighted average of individual
+        # monetary value and the population mean.
+        individual_weight = p * frequency / (p * frequency + q - 1)
+        population_mean = v * p / (q - 1)
+        return (1 - individual_weight) * population_mean + \
+            individual_weight * monetary_value
+            
+            
+ def _negative_log_likelihood(r, alpha, s, beta, freq, rec, T, penalizer_coef):
+        params = r, alpha, s, beta
+        if npany(asarray(params) <= 0.):
+            return np.inf
+
+        #r, alpha, s, beta = params
+        x = freq
+
+        r_s_x = r + s + x
+
+        A_1 = gammaln(r + x) - gammaln(r) + r * log(alpha) + s * log(beta)
+        log_A_0 = ParetoNBDFitter._log_A_0(params, freq, rec, T)
+
+        A_2 = logaddexp(-(r + x) * log(alpha + T) - s * log(beta + T),
+                        log(s) + log_A_0 - log(r_s_x))
+
+        penalizer_term = penalizer_coef * sum(np.asarray(params) ** 2)
+        return -(A_1 + A_2).mean() + penalizer_term
+
+def _log_A_0(r, alpha, s, beta, freq, recency, age):
+        """log_A_0."""
+        params=  r, alpha, s, beta 
+
+        if alpha < beta:
+            min_of_alpha_beta, max_of_alpha_beta, t = (alpha, beta, r + freq)
+        else:
+            min_of_alpha_beta, max_of_alpha_beta, t = (beta, alpha, s + 1)
+        abs_alpha_beta = max_of_alpha_beta - min_of_alpha_beta
+
+        rsf = r + s + freq
+        p_1 = hyp2f1(rsf, t, rsf + 1., abs_alpha_beta /
+                     (max_of_alpha_beta + recency))
+        q_1 = max_of_alpha_beta + recency
+        p_2 = hyp2f1(rsf, t, rsf + 1., abs_alpha_beta /
+                     (max_of_alpha_beta + age))
+        q_2 = max_of_alpha_beta + age
+
+        try:
+            size = len(freq)
+            sign = np.ones(size)
+        except TypeError:
+            sign = 1
+
+        return (logsumexp([log(p_1) + rsf * log(q_2), log(p_2) +
+                rsf * log(q_1)], axis=0, b=[sign, -sign]) -
+                rsf * log(q_1 * q_2))
+
+def pndf_conditional_probability_alive( r, alpha, s, beta, frequency, recency, T):
+        """
+        Conditional probability alive.
+        Compute the probability that a customer with history
+        (frequency, recency, T) is currently alive.
+        From paper:
+        http://brucehardie.com/notes/009/pareto_nbd_derivations_2005-11-05.pdf
+        Parameters
+        ----------
+        frequency: float
+            historical frequency of customer.
+        recency: float
+            historical recency of customer.
+        T: float
+            age of the customer.
+        Returns
+        -------
+        float
+            value representing a probability
+        """
+        x, t_x = frequency, recency
+        #r, alpha, s, beta = self._unload_params('r', 'alpha', 's', 'beta')
+
+        A_0 = np.exp(_log_A_0(r, alpha, s, beta, x, t_x, T))
+        return 1. / (1. + (s / (r + s + x)) *
+                     (alpha + T) ** (r + x) * (beta + T) ** s * A_0)
+
+
+#Let's make this function accessible without having to load in anything from lifetimes 
+
+#######PARETO
+    
+def pndf_conditional_expected_number_of_purchases_up_to_time( r, alpha, s, beta, t, frequency,
+                                                            recency, T):
+        """
+        Conditional expected number of purchases up to time.
+
+        Calculate the expected number of repeat purchases up to time t for a
+        randomly choose individual from the population, given they have
+        purchase history (frequency, recency, T)
+
+        Parameters
+        ----------
+        t: array_like
+            times to calculate the expectation for.
+        frequency: array_like
+            historical frequency of customer.
+        recency: array_like
+            historical recency of customer.
+        T: array_like
+            age of the customer.
+
+        Returns
+        -------
+        array_like
+
+        """
+        x, t_x = frequency, recency
+        #params = params('r', 'alpha', 's', 'beta')
+        #r, alpha, s, beta = params
+
+
+        likelihood = -_negative_log_likelihood(r, alpha, s, beta, x, t_x, T, 0)
+        first_term = gammaln(r + x) - gammaln(r) + r * log(alpha) + s * \
+            log(beta) - (r + x) * log(alpha + T) - s * log(beta + T)
+        second_term = log(r + x) + log(beta + T) - log(alpha + T)
+        third_term = log((1 - ((beta + T) / (beta + T + t)) ** (s - 1)) /
+                         (s - 1))
+        return exp(first_term + second_term + third_term - likelihood)
+#BDF
+    
+def BDF_conditional_probability_alive(a, alpha, b, r, frequency, recency, T,
+                                      ln_exp_max=300):
+        """
+        Compute conditional probability alive.
+        Compute the probability that a customer with history
+        (frequency, recency, T) is currently alive.
+        From http://www.brucehardie.com/notes/021/palive_for_BGNBD.pdf
+        Parameters
+        ----------
+        frequency: float
+            historical frequency of customer.
+        recency: float
+            historical recency of customer.
+        T: float
+            age of the customer.
+        ln_exp_max: int
+            to what value clip log_div equation
+        Returns
+        -------
+        float
+            value representing a probability
+        """
+        #r, alpha, a, b = self._unload_params('r', 'alpha', 'a', 'b')
+        #print(a, alpha, b, r, frequency, recency, T)
+        log_div = (r + frequency) * log(
+            (alpha + T) / (alpha + recency)) + log(
+            a / (b + where(frequency == 0, 1, frequency) - 1))
+
+        return where(frequency == 0, 1.,
+                     where(log_div > ln_exp_max, 0.,
+                           1. / (1 + exp(np.clip(log_div, None, ln_exp_max)))))
