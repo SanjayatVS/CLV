@@ -1,0 +1,48 @@
+
+select a.*,isnull(frequency_holdout,0) as frequency_holdout,isnull(b.total_sales_holdout,0) as total_sales_holdout,
+datediff(month, '2016-08-03', getdate()) as duration_holdout from
+(
+--Calibration
+select top 5 customer_no,
+count(distinct cast(month(transaction_date) as varchar) + cast(year(transaction_date) as varchar))-1 as frequency,
+datediff(month, create_date, MAX(transaction_date)) as recency,
+datediff(month, create_date, getdate()) as T,
+sum(total_net_retail) as 'total_sales'
+from transaction_header  th
+       inner join customer c on c.customer_id = th.customer_id
+          inner join customer_division cd on th.customer_id = cd.customer_id
+where
+transaction_date between '2014-01-01' and '2016-08-02' and primary_address_id is not null
+and create_date >= '2012-01-01'
+group by customer_no,create_date
+) a
+left join
+(
+--holdout
+select top 5 customer_no,
+count(distinct cast(month(transaction_date) as varchar) + cast(year(transaction_date) as varchar)) as frequency_holdout,
+sum(total_net_retail) as total_sales_holdout
+from transaction_header  th
+       inner join customer c on c.customer_id = th.customer_id
+          inner join customer_division cd on th.customer_id = cd.customer_id
+where transaction_date between '2016-08-03' and getdate() and primary_address_id is not null and create_date >= '2012-01-01'
+group by customer_no
+) b on a.customer_no = b.customer_no
+ 
+--check starting period
+select  distinct cast(month(transaction_date) as varchar) + cast(year(transaction_date) as varchar)
+from transaction_header th
+       inner join customer c on th.customer_id = c.customer_id
+where
+       transaction_date between '2014-01-01' and '2016-08-02'
+and
+       customer_no = 258
+ 
+--check holdout
+select  distinct cast(month(transaction_date) as varchar) + cast(year(transaction_date) as varchar)
+from transaction_header th
+       inner join customer c on th.customer_id = c.customer_id
+where
+       transaction_date between '2016-08-03' and getdate()
+and
+       customer_no = 258
