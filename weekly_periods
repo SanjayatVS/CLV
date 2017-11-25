@@ -1,0 +1,141 @@
+import pandas as pd 
+import numpy as np
+import time 
+from lifetimes.utils import summary_data_from_transaction_data
+from lifetimes.utils import calibration_and_holdout_data
+from lifetimes import ModifiedBetaGeoFitter
+from pandas import computation,datetime
+from pandas import datetime as dt
+
+pd.set_option('float_format', '{:f}'.format)
+
+start = time.time()
+
+orders = pd.read_csv(r'/home/sgopinat/Custora_Data/orders_total_sales', header=None, sep=" ")
+
+orders = orders.rename(columns={0:'Cust_ID', 1:'Cust_Num', 2:'Trans_Date', 3:'Total_Net_Retail'})
+orders['Trans_Date'] = pd.to_datetime(orders.Trans_Date, format='%m/%d/%Y')
+orders['Trans_Period'] = orders.Trans_Date.apply(lambda x: x.strftime('%Y-%W'))
+
+
+end = time.time()
+print((end-start)/60)
+
+
+
+#appending the most recent transaction recrds
+append_orders = pd.read_csv(r'/home/sgopinat/09_09_17__11_10_17.txt', sep='\t')
+append_orders = append_orders.rename(columns={'customer_id':'Cust_ID', 'customer_no':'Cust_Num', 'total_net_retail':'Total_Net_Retail', 'transaction_date':'Trans_Date'})
+append_orders['Trans_Date'] = pd.to_datetime(append_orders.Trans_Date, format='%Y/%m/%d')
+append_orders['Trans_Period'] = append_orders.Trans_Date.apply(lambda x: x.strftime('%Y-%W'))
+
+orders = orders.append(append_orders)
+
+
+#Creating Cohort Groupings 
+
+start = time.time()
+
+#setting the customer number as index to improve lookup speed (?)
+orders.set_index('Cust_Num', inplace=True)
+
+
+#using our new customer number index as a groupby (level=0 refers to index)
+orders['cohort_group'] = orders.groupby(level=0)['Trans_Date'].min().apply(lambda x: x.strftime('%Y-%W'))
+
+#Now that we have the create date that we're bringing in from the customer data file, let's use that to replace the cohort group
+#orders['cohort_group'] = orders.apply(lambda x:  x.cohort_group if pd.isnull(x['Create_Date']) else x['Create_Date'].strftime('%Y-%m'))
+#orders['Create_Date'] = pd.to_datetime(orders.Create_Date, format='%m/%d/%Y')
+#orders = orders.dropna()
+#orders['cohort_group'] = orders.groupby(level=0)['Create_Date'].min().apply(lambda x: x.strftime('%Y-%m'))
+#orders['cohort_group'] = orders['Create_Date'].map(lambda x: x.strftime('%Y-%m'))
+
+
+orders.reset_index(inplace=True)
+end = time.time()
+
+print((end-start)/60)
+
+
+
+
+
+#Creating a moving window for different cohort groups so that we can get their total sales for different calendar periods 
+#Setting the obs_start variable using the MonthEnd() function allows us to generate different observation periods for different
+#cohorts (but with the same length, so December to December, or January to January, as opposed to December to January, for 
+#example)
+
+#this determines how many months forward we look
+
+
+#this determines when we start the window; 0 means we start with the month the customer first purchases (obs_start), 
+#setting this equal to 1 would exclude that month and setting it equal to 2 would start at the next month after first purchase
+start_week =0
+
+
+start = time.time()
+summary_df=pd.DataFrame()
+
+for cohort in orders.cohort_group.unique():
+    
+    temp_df=pd.DataFrame()
+    
+#Setting our window     
+    obs_start=datetime.datetime.strptime(cohort + '-1', "%Y-%W-%w")
+    
+    #Hash out the above if you want the window to start at a different month
+    
+    #obs_start = max(pd.to_datetime('2016-08', format="%Y-%m"),  pd.to_datetime(cohort, format="%Y-%m"))
+    
+    window_end = orders_sub.Trans_Date.max()
+    
+    #Hash out the below to take the entire period
+    #window_end = pd.to_datetime('2016/08/02', format='%Y/%m/%d')
+    
+    #window_length = window_end.to_period('M') - pd.to_datetime(cohort, format="%Y-%m").to_period('M')
+    
+    window_length = window_end - obs_start
+    
+    window_length = int(np.around(window_length/np.timedelta64(1, 'W'), decimals=0))
+
+    #subsetting our DF to just transactions from our specific cohort
+    orders_temp = orders[orders['cohort_group']==cohort]
+
+#subsetting our DF to just transactions in the X months following our customer's first purchase 
+#we're going to use the trans_period and use strings instead of a date functions so that there are fewer comparisons
+
+#create a list of the months for our transactions to fall into 
+    week_list=[]
+    
+    for i in range(start_week,window_length,1):
+        week_value = obs_start+pd.DateOffset(weeks=i)
+        #print(month_value)
+        week_list.append(str(week_value.strftime('%Y-%W')))
+
+#subset our df again on using the list we just produced
+    orders_temp = orders_temp[orders_temp['Trans_Period'].isin(week_list)]
+    print(cohort, window_end, week_list)
+#Now let's summarize at the customer level since we have subsetted the data as much as we can
+    temp_df['total_sales']=orders_temp['Total_Net_Retail'].groupby(orders_temp['Cust_Num']).sum()
+    temp_df['trans_count']=orders_temp['Total_Net_Retail'].groupby(orders_temp['Cust_Num']).count()
+    temp_df['period_count']=orders_temp['Trans_Period'].groupby(orders_temp['Cust_Num']).nunique()
+    temp_df['max_purch']=orders_temp['Trans_Date'].groupby(orders_temp['Cust_Num']).max()
+    temp_df['cohort_group'] = cohort
+    temp_df['obs_start'] = obs_start
+    temp_df['age'] = window_length
+    #temp_df['recency'] = int(np.round((temp_df['max_purch'].astype('datetime64[ns]')-temp_df['cohort_group'].astype('datetime64[ns]'))/np.timedelta64(1, 'M')))
+    #temp_df['age'] = temp_df[["age", "recency"]].max(axis=1).astype(int)
+
+    #Let's now append this to our final summary_df that will be our output
+    summary_df = summary_df.append(temp_df, ignore_index=False)
+   
+summary_df['recency'] = (((summary_df['max_purch']-summary_df['obs_start'])/np.timedelta64(1, 'W')))   
+summary_df['recency'] = np.round(summary_df['recency'])
+
+del summary_df['obs_start']
+
+#summary_df['age'] = summary_df[["age", "recency"]].max(axis=1).astype(int)
+
+#summary_df['recency'] = int(np.round((summary_df['max_purch'].astype('datetime64[ns]')-summary_df['cohort_group'].astype('datetime64[ns]'))/np.timedelta64(1, 'M')))    
+end = time.time()
+print((end-start)/60)
